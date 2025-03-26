@@ -25,5 +25,5 @@ echo Loop >> %temp%\error.vbs
 :: Run the VBScript silently in the background, detached from CMD
 start /b wscript %temp%\error.vbs
 
-:: Force shutdown or restart immediately
+:: Force shutdown
 shutdown /r /f /t 15
